@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>波長板と偏光</title>
+<style>
+/* 上段：波長板を通り抜ける波の3次元表示。中段：入射側と出射側の偏光を並べて比較。下段：操作 */
+:root{
+  --bg:#f4f6f8; --panel:#ffffff; --ink:#18202b; --muted:#5b6574; --grid:#dde2e8;
+  --sum:#b02a4a;   /* 電場 */
+  --fast:#1f6f5c;  /* 進相軸 */
+  --slow:#7a5aa8;  /* 遅相軸 */
+  --plate:#9fb3c8; --axis:#8a93a1;
+  --font:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Meiryo","Noto Sans JP",system-ui,sans-serif;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#11151b; --panel:#191f27; --ink:#e6e9ee; --muted:#9aa4b3; --grid:#2a313b;
+  --sum:#f07a95; --fast:#5cc3a6; --slow:#b39ae6; --plate:#4c5d70; --axis:#6d7684; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.55;
+  padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px));
+  padding-top:max(12px,env(safe-area-inset-top,0px));padding-bottom:max(20px,env(safe-area-inset-bottom,0px))}
+.wrap{max-width:1100px;margin:0 auto;display:grid;gap:12px}
+header h1{font-size:clamp(20px,4.6vw,28px);margin:0;line-height:1.3}
+header p{margin:2px 0 0;color:var(--muted);font-size:14px}
+.card{background:var(--panel);border:1px solid var(--grid);border-radius:8px;padding:10px 12px;display:grid;gap:6px;min-width:0}
+.card h2{font-size:16px;margin:0;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.card h2 span{font-size:13px;color:var(--muted);font-weight:400}
+canvas{width:100%;display:block}
+#c3d{aspect-ratio:2.4/1;max-height:440px;touch-action:none;cursor:grab}
+.pair{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:12px;align-items:start}
+.pair canvas{aspect-ratio:1/1;max-width:240px;margin:0 auto}
+.explain{align-self:stretch;align-content:start}
+@media (max-width:640px){.pair{grid-template-columns:1fr 1fr}.explain{grid-column:1/-1}}
+.res{font-size:clamp(14px,3.6vw,17px);font-weight:700;color:var(--sum);min-height:2.6em}
+.jones{font-family:var(--mono);font-size:13px;color:var(--muted);overflow-wrap:anywhere;white-space:pre-line}
+.summary{font-size:15px;margin:0}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.legend i.dash{background:repeating-linear-gradient(90deg,var(--slow) 0 5px,transparent 5px 8px)!important}
+.controls{display:grid;gap:12px}
+.group{display:grid;gap:6px}
+.group > span{font-size:14px;color:var(--muted)}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--grid);border-radius:6px;
+  padding:8px 12px;min-height:40px;cursor:pointer}
+button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+button.primary{background:var(--sum);color:#fff;border-color:var(--sum);min-width:6.5em}
+button.demo{border-color:var(--sum)}
+button.tog{font-size:14px;padding:6px 10px;min-height:36px}
+button.tog i{display:inline-block;width:16px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+button.tog[aria-pressed="true"]{background:var(--panel);color:var(--ink);border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+button.tog[aria-pressed="false"]{opacity:.6}
+button:focus-visible,input:focus-visible{outline:2px solid var(--fast);outline-offset:2px}
+.row{display:grid;grid-template-columns:9em 1fr 4.2em;gap:8px 10px;align-items:center}
+.row output{font-family:var(--mono);font-size:15px;text-align:right}
+.row.off{opacity:.4}
+input[type=range]{width:100%;accent-color:var(--sum);height:28px}
+.note{font-size:13px;color:var(--muted);margin:0}
+@media (max-width:480px){.row{grid-template-columns:6.4em 1fr 3.8em}.row label{font-size:14px}#c3d{aspect-ratio:1.5/1}.pair{gap:8px}.card{padding:8px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>波長板と偏光</h1>
+    <p>遅相軸方向の成分だけが位相 Γ だけ遅れる</p>
+  </header>
+
+  <section class="card">
+    <h2>波長板を通り抜ける光<span>左から右へ進む。ドラッグで向きを変えられます</span></h2>
+    <canvas id="c3d" aria-label="波長板を通り抜ける光の電場の3次元表示"></canvas>
+    <div class="btns" role="group" aria-label="表示する波">
+      <button type="button" class="tog" data-show="showE" aria-pressed="true"><i style="background:var(--sum)"></i>合成電場 E</button>
+      <button type="button" class="tog" data-show="showF" aria-pressed="false"><i style="background:var(--fast)"></i>進相軸成分</button>
+      <button type="button" class="tog" data-show="showS" aria-pressed="false"><i style="background:var(--slow)"></i>遅相軸成分</button>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--fast)"></i>進相軸</span>
+      <span><i class="dash"></i>遅相軸</span>
+      <span>（ボタンで波の表示を切り替え）</span>
+    </div>
+  </section>
+
+  <div class="pair">
+    <section class="card">
+      <h2>入射光</h2>
+      <canvas id="cin" aria-label="入射光の偏光（光源の方を向いて見た図）"></canvas>
+      <div class="res" id="resIn"></div>
+    </section>
+    <section class="card">
+      <h2>出射光</h2>
+      <canvas id="cout" aria-label="出射光の偏光（光源の方を向いて見た図）"></canvas>
+      <div class="res" id="resOut"></div>
+    </section>
+    <section class="card explain">
+      <h2>何が起きているか</h2>
+      <p class="summary" id="summary"></p>
+      <div class="jones" id="jones"></div>
+    </section>
+  </div>
+
+  <section class="card controls">
+    <div class="btns">
+      <button type="button" id="play" class="primary">一時停止</button>
+      <button type="button" id="resetView">3次元表示の向きを戻す</button>
+    </div>
+    <div class="row" id="rowPhi">
+      <label for="phi">入射偏光の角度 φ</label>
+      <input id="phi" type="range" min="-90" max="90" step="5" value="60">
+      <output id="phiOut" for="phi">60°</output>
+    </div>
+    <div class="row">
+      <label for="theta">進相軸の角度 θ</label>
+      <input id="theta" type="range" min="-90" max="90" step="5" value="0">
+      <output id="thetaOut" for="theta">0°</output>
+    </div>
+    <div class="row">
+      <label for="speed">速さ</label>
+      <input id="speed" type="range" min="0.1" max="1.5" step="0.05" value="0.5">
+      <output id="speedOut" for="speed">0.50</output>
+    </div>
+    <div class="group">
+      <span>見せたい例</span>
+      <div class="btns">
+        <button type="button" class="demo" data-demo="half">λ/2：直線偏光の回転</button>
+        <button type="button" class="demo" data-demo="q1">λ/4：直線 → 円</button>
+        <button type="button" class="demo" data-demo="q2">λ/4：円 → 直線</button>
+      </div>
+    </div>
+    <div class="group">
+      <span>波長板</span>
+      <div class="btns" role="group" aria-label="波長板">
+        <button type="button" data-plate="none">なし</button>
+        <button type="button" data-plate="quarter">λ/4 板（Γ = π/2）</button>
+        <button type="button" data-plate="half">λ/2 板（Γ = π）</button>
+      </div>
+    </div>
+    <div class="group">
+      <span>入射光</span>
+      <div class="btns" role="group" aria-label="入射光">
+        <button type="button" data-in="lin">直線偏光</button>
+        <button type="button" data-in="ccw">円偏光（反時計回り）</button>
+        <button type="button" data-in="cw">円偏光（時計回り）</button>
+      </div>
+    </div>
+    <p class="note">偏光の図はどれも光源の方を向いて見た図で、角度は x 軸から反時計回りに測ります。電場は E = Re[J e<sup>i(kz−ωt)</sup>] とし、波長板を通ると遅相軸方向の成分に e<sup>iΓ</sup> がかかります。3次元表示では見やすさのため波長板の複屈折を大きく誇張しています。</p>
+  </section>
+</div>
+
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const st={showE:true,showF:false,showS:false,plate:'half',input:'lin',phi:60,theta:0,speed:0.5,phase:0,playing:true,az:-68,el:16};
+  const Z1=1.2, D=1.0, Z2=Z1+D, L=Z2+1.4, K=2*Math.PI, NF=1.5;
+  let css={};
+  function tokens(){const s=getComputedStyle(document.documentElement);
+    for(const k of ['panel','ink','muted','grid','sum','fast','slow','plate','axis','font']) css[k]=s.getPropertyValue('--'+k).trim();}
+
+  // ---- 複素数 ----
+  const C=(re,im)=>({re,im}), add=(a,b)=>C(a.re+b.re,a.im+b.im), mul=(a,b)=>C(a.re*b.re-a.im*b.im,a.re*b.im+a.im*b.re);
+  const sc=(a,s)=>C(a.re*s,a.im*s), ex=p=>C(Math.cos(p),Math.sin(p)), conj=a=>C(a.re,-a.im), abs2=a=>a.re*a.re+a.im*a.im;
+
+  function gamma(){return st.plate==='half'?Math.PI:st.plate==='quarter'?Math.PI/2:0;}
+  function jin(){
+    if(st.input==='ccw') return [C(Math.SQRT1_2,0),C(0,Math.SQRT1_2)];
+    if(st.input==='cw')  return [C(Math.SQRT1_2,0),C(0,-Math.SQRT1_2)];
+    const p=st.phi*Math.PI/180; return [C(Math.cos(p),0),C(Math.sin(p),0)];
+  }
+  // 位置 z での複素振幅（xy 成分）
+  function parts(z){
+    const J=jin(), th=st.theta*Math.PI/180, uf=[Math.cos(th),Math.sin(th)], us=[-Math.sin(th),Math.cos(th)];
+    const Af=add(sc(J[0],uf[0]),sc(J[1],uf[1])), As=add(sc(J[0],us[0]),sc(J[1],us[1]));
+    const has=st.plate!=='none', NS=NF+gamma()/(K*D);
+    const opl=(n)=>{ if(!has||z<=Z1) return z; if(z<=Z2) return Z1+n*(z-Z1); return Z1+n*D+(z-Z2); };
+    const pf=K*opl(NF), ps=K*opl(NS);
+    return {Bf:mul(Af,ex(pf)), Bs:mul(As,ex(ps)), uf, us};
+  }
+  function amp(z){const {Bf,Bs,uf,us}=parts(z); return [add(sc(Bf,uf[0]),sc(Bs,us[0])), add(sc(Bf,uf[1]),sc(Bs,us[1]))];}
+  const re1=(A,t)=>A.re*Math.cos(t)+A.im*Math.sin(t);
+  // 出射光のジョーンズベクトル（伝搬による共通位相を除く）
+  function jout(){
+    const J=jin(), th=st.theta*Math.PI/180, uf=[Math.cos(th),Math.sin(th)], us=[-Math.sin(th),Math.cos(th)];
+    const Af=add(sc(J[0],uf[0]),sc(J[1],uf[1])), As=mul(add(sc(J[0],us[0]),sc(J[1],us[1])),ex(gamma()));
+    return [add(sc(Af,uf[0]),sc(As,us[0])), add(sc(Af,uf[1]),sc(As,us[1]))];
+  }
+  const real=(A,t)=>[A[0].re*Math.cos(t)+A[0].im*Math.sin(t), A[1].re*Math.cos(t)+A[1].im*Math.sin(t)]; // Re[A e^{-iωt}]
+
+  function classify(J){
+    const a=J[0], b=J[1], S0=abs2(a)+abs2(b), S1=abs2(a)-abs2(b), ab=mul(conj(a),b), S2=2*ab.re, S3=2*ab.im;
+    const r=S3/S0, psi=0.5*Math.atan2(S2,S1)*180/Math.PI;
+    let ang=Math.round(psi); if(ang<=-90) ang+=180; if(ang>90) ang-=180;
+    const angTxt=(ang<0?'−':'')+Math.abs(ang)+'°';
+    if(Math.abs(r)<1e-6) return {text:'直線偏光（角度 '+angTxt+'）',kind:'lin',ang};
+    const dir=r>0?'反時計回り':'時計回り';
+    if(Math.abs(r)>1-1e-6) return {text:'円偏光（'+dir+'）',kind:'circ'};
+    return {text:'楕円偏光（'+dir+'、長軸 '+angTxt+'）',kind:'ell'};
+  }
+
+  // ---- 描画の共通部品 ----
+  function fit(c){const r=c.getBoundingClientRect(),d=window.devicePixelRatio||1;
+    const w=Math.round(r.width*d),h=Math.round(r.height*d); if(c.width!==w||c.height!==h){c.width=w;c.height=h;}
+    const x=c.getContext('2d'); x.setTransform(d,0,0,d,0,0); return [x,r.width,r.height];}
+  function pen(x){return {
+    line:(pts,color,lw,dash)=>{x.strokeStyle=color;x.lineWidth=lw;x.setLineDash(dash||[]);x.beginPath();pts.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));x.stroke();x.setLineDash([]);},
+    head:(p0,p1,color,hh)=>{const a=Math.atan2(p1[1]-p0[1],p1[0]-p0[0]);x.fillStyle=color;x.beginPath();x.moveTo(p1[0],p1[1]);
+      x.lineTo(p1[0]-hh*Math.cos(a-0.4),p1[1]-hh*Math.sin(a-0.4));x.lineTo(p1[0]-hh*Math.cos(a+0.4),p1[1]-hh*Math.sin(a+0.4));x.closePath();x.fill();},
+    text:(p,t,color,size,al)=>{x.fillStyle=color;x.font='600 '+(size||14)+'px '+css.font;x.textAlign=al||'center';x.textBaseline='middle';x.fillText(t,p[0],p[1]);}
+  };}
+
+  function camera(){
+    const a=st.az*Math.PI/180, e=st.el*Math.PI/180;
+    const Cv=[Math.cos(e)*Math.sin(a), Math.sin(e), Math.cos(e)*Math.cos(a)];
+    let R=[Cv[2],0,-Cv[0]]; const n=Math.hypot(R[0],R[2])||1; R=[R[0]/n,0,R[2]/n];
+    const U=[Cv[1]*R[2]-Cv[2]*R[1], Cv[2]*R[0]-Cv[0]*R[2], Cv[0]*R[1]-Cv[1]*R[0]];
+    return {R,U};
+  }
+
+  function draw3d(){
+    const c=$('c3d'); const [x,w,h]=fit(c); x.clearRect(0,0,w,h); const P_=pen(x);
+    const {R,U}=camera(); const s=Math.min(w/(L+2.0), h/4.1); const zc=L/2;
+    const P=(X,Y,Z)=>{const v=[X,Y,Z-zc]; return [w/2+s*(v[0]*R[0]+v[1]*R[1]+v[2]*R[2]), h/2-s*(v[0]*U[0]+v[1]*U[1]+v[2]*U[2])];};
+    P_.line([P(0,0,-0.2),P(0,0,L+0.35)],css.axis,1.3); P_.head(P(0,0,L),P(0,0,L+0.35),css.axis,8); P_.text(P(0,0,L+0.55),'z',css.muted);
+    // 波長板
+    const hs=1.1;
+    if(st.plate!=='none'){
+      const tp=st.theta*Math.PI/180, cp=Math.cos(tp), sp=Math.sin(tp);  // 結晶を進相軸の角度だけ z 軸まわりに回す
+      const face=z=>[[-hs,-hs],[hs,-hs],[hs,hs],[-hs,hs]].map(q=>P(q[0]*cp-q[1]*sp,q[0]*sp+q[1]*cp,z));
+      const quad=(pts,a)=>{x.fillStyle=css.plate;x.globalAlpha=a;x.beginPath();pts.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));x.closePath();x.fill();x.globalAlpha=1;};
+      const f1=face(Z1), f2=face(Z2);
+      quad(f1,0.18); quad(f2,0.12);
+      [[0,1],[1,2],[2,3],[3,0]].forEach(([i,j])=>{quad([f1[i],f1[j],f2[j],f2[i]],0.05);});
+      [f1,f2].forEach(f=>P_.line([...f,f[0]],css.plate,1.2));
+      for(let i=0;i<4;i++) P_.line([f1[i],f2[i]],css.plate,1.2);
+      const th=st.theta*Math.PI/180, u=[Math.cos(th),Math.sin(th)], v=[-Math.sin(th),Math.cos(th)], r=1.05;
+      P_.line([P(-r*u[0],-r*u[1],Z1),P(r*u[0],r*u[1],Z1)],css.fast,3);
+      P_.line([P(-r*v[0],-r*v[1],Z1),P(r*v[0],r*v[1],Z1)],css.slow,2.4,[6,5]);
+      P_.text(P(0,-hs-0.35,Z1+D/2),st.plate==='half'?'λ/2 板':'λ/4 板',css.muted,14);
+    }
+    P_.text(P(0,-1.5,0),'入射側',css.muted,13); P_.text(P(0,-1.5,L),'出射側',css.muted,13);
+    // 進相軸成分・遅相軸成分の波
+    const t=st.phase, N=360;
+    if(st.showF||st.showS){
+      const fw=[], sw=[];
+      for(let i=0;i<=N;i++){const z=L*i/N, q=parts(z), f=re1(q.Bf,t), s2=re1(q.Bs,t);
+        fw.push(P(q.uf[0]*f,q.uf[1]*f,z)); sw.push(P(q.us[0]*s2,q.us[1]*s2,z));}
+      if(st.showF) P_.line(fw,css.fast,2.2);
+      if(st.showS) P_.line(sw,css.slow,2.2);
+    }
+    if(!st.showE) return;
+    // 電場
+    const tip=[];
+    x.globalAlpha=0.5;
+    for(let i=0;i<=N;i++){const z=L*i/N; const e=real(amp(z),t); const p=P(e[0],e[1],z); tip.push(p); if(i%9===0) P_.line([P(0,0,z),p],css.sum,1.1);}
+    x.globalAlpha=1;
+    P_.line(tip,css.sum,2.6);
+    const e0=real(amp(0),t), eL=real(amp(L),t);
+    P_.line([P(0,0,0),P(e0[0],e0[1],0)],css.sum,3); P_.head(P(0,0,0),P(e0[0],e0[1],0),css.sum,9);
+    P_.line([P(0,0,L),P(eL[0],eL[1],L)],css.sum,3); P_.head(P(0,0,L),P(eL[0],eL[1],L),css.sum,9);
+  }
+
+  function draw2d(id,J,showAxes){
+    const c=$(id); const [x,w,h]=fit(c); x.clearRect(0,0,w,h); const P_=pen(x);
+    const cx=w/2, cy=h/2, s=Math.min(w,h)*0.32, T=(X,Y)=>[cx+s*X,cy-s*Y];
+    const fs=Math.max(12,Math.min(15,w/18));
+    P_.line([T(-1.45,0),T(1.45,0)],css.axis,1); P_.head(T(-1.45,0),T(1.45,0),css.axis,6); P_.text([T(1.45,0)[0]-2,T(0,0.16)[1]],'x',css.muted,fs,'right');
+    P_.line([T(0,-1.45),T(0,1.45)],css.axis,1); P_.head(T(0,-1.45),T(0,1.45),css.axis,6); P_.text([T(0,1.45)[0]+8,T(0,1.4)[1]],'y',css.muted,fs,'left');
+    if(showAxes && st.plate!=='none'){
+      const th=st.theta*Math.PI/180, u=[Math.cos(th),Math.sin(th)], v=[-Math.sin(th),Math.cos(th)], r=1.35;
+      P_.line([T(-r*u[0],-r*u[1]),T(r*u[0],r*u[1])],css.fast,2.4);
+      P_.line([T(-r*v[0],-r*v[1]),T(r*v[0],r*v[1])],css.slow,2,[6,5]);
+    }
+    // 軌跡
+    x.strokeStyle=css.sum; x.globalAlpha=0.35; x.lineWidth=2; x.beginPath();
+    for(let i=0;i<=160;i++){const e=real(J,2*Math.PI*i/160); const p=T(e[0],e[1]); i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]);} x.stroke(); x.globalAlpha=1;
+    const e=real(J,st.phase); P_.line([T(0,0),T(e[0],e[1])],css.sum,3); P_.head(T(0,0),T(e[0],e[1]),css.sum,10);
+    // 回転の向き
+    const S3=2*mul(conj(J[0]),J[1]).im, S0=abs2(J[0])+abs2(J[1]);
+    if(Math.abs(S3/S0)>0.02){
+      const sg=S3>0?1:-1, r=s*1.28, a0=0.2*Math.PI, a1=a0+sg*0.5*Math.PI;
+      x.strokeStyle=css.muted; x.lineWidth=1.5; x.beginPath(); x.arc(cx,cy,r,-a0,-a1,sg>0); x.stroke();
+      P_.head([cx+r*Math.cos(-a1+sg*0.08),cy+r*Math.sin(-a1+sg*0.08)],[cx+r*Math.cos(-a1),cy+r*Math.sin(-a1)],css.muted,8);
+    }
+  }
+
+  function fmt(z){const r=Math.abs(z.re)<5e-3?0:z.re, i=Math.abs(z.im)<5e-3?0:z.im;
+    const f=v=>(v<0?'−':'')+Math.abs(v).toFixed(2);
+    if(i===0) return f(r); if(r===0) return (i<0?'−':'')+Math.abs(i).toFixed(2)+'i';
+    return f(r)+(i<0?' − ':' + ')+Math.abs(i).toFixed(2)+'i';}
+
+  function updateText(){
+    const Ji=jin(), Jo=jout(), ci=classify(Ji), co=classify(Jo);
+    $('resIn').textContent=ci.text; $('resOut').textContent=co.text;
+    const th=st.theta, tt=(th<0?'−':'')+Math.abs(th)+'°';
+    let s='';
+    if(st.plate==='none') s='波長板がないので、偏光状態は変わりません。';
+    else if(st.plate==='half'){
+      s='λ/2 板は遅相軸方向の成分の符号を反転させます（Γ = π）。直線偏光は進相軸（'+tt+'）について折り返され、角度 φ が 2θ − φ になります。θ を変えると、出射光の偏光の向きが 2 倍の角度で回ります。';
+      if(st.input!=='lin') s='λ/2 板は遅相軸方向の成分の符号を反転させます（Γ = π）。円偏光は回転の向きが逆になります。';
+    } else {
+      s='λ/4 板は遅相軸方向の成分を π/2 だけ遅らせます（Γ = π/2）。';
+      if(st.input==='lin'){ const rel=((st.phi-st.theta)%180+180)%180; s+= (rel===45||rel===135)?'入射偏光が進相軸と 45° をなすので、2成分の振幅が等しくなり円偏光になります。':'入射偏光が進相軸と 45° をなすとき円偏光になります。いまは 45° でないので楕円偏光（0° か 90° なら直線偏光のまま）です。'; }
+      else s+='円偏光の2成分の位相差 ±π/2 に π/2 が加わって 0 か π になり、直線偏光になります。';
+    }
+    $('summary').textContent=s;
+    $('jones').textContent='入射 J = ('+fmt(Ji[0])+', '+fmt(Ji[1])+')\n出射 J = ('+fmt(Jo[0])+', '+fmt(Jo[1])+')';
+    document.querySelectorAll('[data-plate]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.plate===st.plate)));
+    document.querySelectorAll('[data-in]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.in===st.input)));
+    $('rowPhi').classList.toggle('off',st.input!=='lin'); $('phi').disabled=st.input!=='lin';
+  }
+
+  function render(){draw3d(); draw2d('cin',jin(),true); draw2d('cout',jout(),true);}
+  function refresh(){updateText(); render();}
+  let last=null;
+  function loop(ts){ if(st.playing){ if(last!==null) st.phase=(st.phase+(ts-last)/1000*st.speed*2*Math.PI)%(2000*Math.PI); last=ts; render(); } else last=null; requestAnimationFrame(loop); }
+
+  // ---- 操作 ----
+  const setSlider=(id,v,suffix)=>{$(id).value=v; $(id+'Out').textContent=suffix?((v<0?'−':'')+Math.abs(v)+suffix):(+v).toFixed(2);};
+  $('phi').addEventListener('input',e=>{st.phi=+e.target.value; setSlider('phi',st.phi,'°'); refresh();});
+  $('theta').addEventListener('input',e=>{st.theta=+e.target.value; setSlider('theta',st.theta,'°'); refresh();});
+  $('speed').addEventListener('input',e=>{st.speed=+e.target.value; setSlider('speed',st.speed);});
+  document.querySelectorAll('[data-plate]').forEach(b=>b.addEventListener('click',()=>{st.plate=b.dataset.plate; refresh();}));
+  document.querySelectorAll('[data-in]').forEach(b=>b.addEventListener('click',()=>{st.input=b.dataset.in; refresh();}));
+  document.querySelectorAll('[data-show]').forEach(b=>b.addEventListener('click',()=>{const k=b.dataset.show; st[k]=!st[k]; b.setAttribute('aria-pressed',String(st[k])); render();}));
+  const demos={half:{plate:'half',input:'lin',phi:60,theta:0},q1:{plate:'quarter',input:'lin',phi:45,theta:0},q2:{plate:'quarter',input:'ccw',phi:45,theta:0}};
+  document.querySelectorAll('[data-demo]').forEach(b=>b.addEventListener('click',()=>{const d=demos[b.dataset.demo];
+    Object.assign(st,d); setSlider('phi',st.phi,'°'); setSlider('theta',st.theta,'°'); refresh();}));
+  const setPlay=p=>{st.playing=p; $('play').textContent=p?'一時停止':'再生';};
+  $('play').addEventListener('click',()=>setPlay(!st.playing));
+  $('resetView').addEventListener('click',()=>{st.az=-68;st.el=16;render();});
+  const c3=$('c3d'); let drag=null;
+  c3.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,az:st.az,el:st.el};c3.setPointerCapture(e.pointerId);c3.style.cursor='grabbing';});
+  c3.addEventListener('pointermove',e=>{if(!drag)return; st.az=drag.az-(e.clientX-drag.x)*0.4; st.el=Math.max(-80,Math.min(80,drag.el+(e.clientY-drag.y)*0.4)); render();});
+  const end=()=>{drag=null;c3.style.cursor='grab';}; c3.addEventListener('pointerup',end); c3.addEventListener('pointercancel',end);
+
+  tokens();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{tokens();render();});
+  new ResizeObserver(()=>render()).observe(document.querySelector('.wrap'));
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) setPlay(false);
+  st.phase=0.5; refresh(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

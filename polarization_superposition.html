@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>偏光の重ね合わせ</title>
+<style>
+/* 1画面の実験台：上に3次元の波、下に「光源の方を向いて見た」電場の軌跡、操作は最下段 */
+:root{
+  --bg:#f4f6f8; --panel:#ffffff; --ink:#18202b; --muted:#5b6574; --grid:#dde2e8;
+  --ex:#2556a8;   /* x 偏光成分 */
+  --ey:#c0661a;   /* y 偏光成分 */
+  --sum:#b02a4a;  /* 合成電場 */
+  --axis:#8a93a1;
+  --font:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Meiryo","Noto Sans JP",system-ui,sans-serif;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#11151b; --panel:#191f27; --ink:#e6e9ee; --muted:#9aa4b3; --grid:#2a313b;
+  --ex:#7ea6ee; --ey:#eea35a; --sum:#f07a95; --axis:#6d7684; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.55;
+  padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px));
+  padding-top:max(12px,env(safe-area-inset-top,0px));padding-bottom:max(20px,env(safe-area-inset-bottom,0px))}
+.wrap{max-width:1100px;margin:0 auto;display:grid;gap:12px}
+header h1{font-size:clamp(20px,4.6vw,28px);margin:0;line-height:1.3}
+header p{margin:2px 0 0;color:var(--muted);font-size:14px}
+.views{display:grid;grid-template-columns:1.45fr 1fr;gap:12px}
+@media (max-width:760px){.views{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--grid);border-radius:8px;padding:10px 12px;display:grid;gap:6px;min-width:0}
+.card h2{font-size:16px;margin:0;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.card h2 span{font-size:13px;color:var(--muted);font-weight:400}
+canvas{width:100%;display:block;border-radius:6px}
+#c3d{aspect-ratio:16/10;touch-action:none;cursor:grab}
+#c2d{aspect-ratio:1/1;max-height:420px;margin:0 auto}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.state{display:grid;gap:4px}
+.state .big{font-size:clamp(20px,4.8vw,26px);font-weight:700;color:var(--sum)}
+.state .eq{font-family:var(--mono);font-size:14px;color:var(--ink);overflow-x:auto;white-space:nowrap}
+.controls{display:grid;gap:12px}
+.row{display:grid;grid-template-columns:7.5em 1fr 4.8em;gap:8px 10px;align-items:center}
+.row label{font-size:15px}
+.row output{font-family:var(--mono);font-size:15px;text-align:right}
+input[type=range]{width:100%;accent-color:var(--sum);height:28px}
+.presets{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--grid);border-radius:6px;
+  padding:8px 12px;min-height:40px;cursor:pointer}
+button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+button.primary{background:var(--sum);color:#fff;border-color:var(--sum);min-width:6.5em}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ex);outline-offset:2px}
+.note{font-size:13px;color:var(--muted);margin:0}
+.group{display:grid;gap:6px}
+.group > span{font-size:14px;color:var(--muted)}
+@media (max-width:480px){.row{grid-template-columns:5em 1fr 4.2em}#c3d{aspect-ratio:4/3}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>偏光の重ね合わせ</h1>
+    <p>x 偏光の波と y 偏光の波の位相差 δ で偏光状態が決まる</p>
+  </header>
+
+  <div class="views">
+    <section class="card">
+      <h2>進む波（3次元）<span>ドラッグで向きを変えられます</span></h2>
+      <canvas id="c3d" aria-label="z 方向に進む x 偏光・y 偏光・合成電場の3次元表示"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--ex)"></i>x 偏光成分 E<sub>x</sub></span>
+        <span><i style="background:var(--ey)"></i>y 偏光成分 E<sub>y</sub></span>
+        <span><i style="background:var(--sum)"></i>合成電場 E</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>光源の方を向いて見た電場<span>右端（観測点）での E の先端</span></h2>
+      <canvas id="c2d" aria-label="光源の方を向いて見た電場ベクトルの先端の軌跡"></canvas>
+      <div class="state" aria-live="polite">
+        <div class="big" id="stateText">円偏光（反時計回り）</div>
+        <div class="eq" id="eqText"></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card controls">
+    <div class="presets">
+      <button type="button" id="play" class="primary">一時停止</button>
+      <button type="button" id="resetView">3次元表示の向きを戻す</button>
+    </div>
+    <div class="row">
+      <label for="delta">位相差 δ</label>
+      <input id="delta" type="range" min="-180" max="180" step="5" value="90">
+      <output id="deltaOut" for="delta">90°</output>
+    </div>
+    <div class="row">
+      <label for="ratio">E<sub>0y</sub>/E<sub>0x</sub></label>
+      <input id="ratio" type="range" min="0" max="1.5" step="0.05" value="1">
+      <output id="ratioOut" for="ratio">1.00</output>
+    </div>
+    <div class="row">
+      <label for="speed">速さ</label>
+      <input id="speed" type="range" min="0.1" max="1.5" step="0.05" value="0.5">
+      <output id="speedOut" for="speed">0.50</output>
+    </div>
+    <div class="group">
+      <span>位相差の例</span>
+      <div class="presets" role="group" aria-label="位相差の例">
+        <button type="button" data-d="0">δ = 0</button>
+        <button type="button" data-d="45">45°</button>
+        <button type="button" data-d="90">90°</button>
+        <button type="button" data-d="135">135°</button>
+        <button type="button" data-d="180">180°</button>
+        <button type="button" data-d="-90">−90°</button>
+      </div>
+    </div>
+    <p class="note">ここでは E<sub>x</sub> = E<sub>0x</sub> cos(kz − ωt)、E<sub>y</sub> = E<sub>0y</sub> cos(kz − ωt + δ) としています（観測点で E<sub>y</sub> は E<sub>x</sub> より δ だけ遅れて振動）。0 &lt; δ &lt; 180° で反時計回り、−180° &lt; δ &lt; 0 で時計回りです（光源の方を向いて見たとき）。右回り・左回りの呼び方は分野によって逆なので、回転の向きで確認してください。</p>
+  </section>
+</div>
+
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const st={delta:90,ratio:1,speed:0.5,phase:0,playing:true,az:-62,el:22};
+  const L=2;                // 表示する波長数
+  const K=2*Math.PI;        // 波数（波長 = 1）
+  let css={};
+  function tokens(){const s=getComputedStyle(document.documentElement);
+    for(const k of ['panel','ink','muted','grid','ex','ey','sum','axis','font']) css[k]=s.getPropertyValue('--'+k).trim();}
+
+  // ---- 3次元表示 ----
+  function camera(){
+    const a=st.az*Math.PI/180, e=st.el*Math.PI/180;
+    const C=[Math.cos(e)*Math.sin(a), Math.sin(e), Math.cos(e)*Math.cos(a)]; // 原点からカメラへ
+    let R=[C[2],0,-C[0]]; const n=Math.hypot(R[0],R[2])||1; R=[R[0]/n,0,R[2]/n];      // ŷ × C
+    const U=[C[1]*R[2]-C[2]*R[1], C[2]*R[0]-C[0]*R[2], C[0]*R[1]-C[1]*R[0]];            // C × R
+    return {R,U};
+  }
+  function fitCanvas(c){const r=c.getBoundingClientRect(),d=window.devicePixelRatio||1;
+    const w=Math.round(r.width*d),h=Math.round(r.height*d); if(c.width!==w||c.height!==h){c.width=w;c.height=h;}
+    const x=c.getContext('2d'); x.setTransform(d,0,0,d,0,0); return [x,r.width,r.height];}
+
+  function fields(z){ // 時刻 phase での位置 z の電場
+    const a=1, b=st.ratio, ph=K*z-st.phase;
+    return [a*Math.cos(ph), b*Math.cos(ph+st.delta*Math.PI/180)];
+  }
+
+  function draw3d(){
+    const c=$('c3d'); const [x,w,h]=fitCanvas(c); x.clearRect(0,0,w,h);
+    const {R,U}=camera(); const s=Math.min(w/(L+1.6), h/3.9); const zc=L/2;
+    const P=(X,Y,Z)=>{const v=[X,Y,Z-zc]; return [w/2+s*(v[0]*R[0]+v[1]*R[1]+v[2]*R[2]), h/2-s*(v[0]*U[0]+v[1]*U[1]+v[2]*U[2])];};
+    const line=(pts,color,lw,dash)=>{x.strokeStyle=color;x.lineWidth=lw;x.setLineDash(dash||[]);x.beginPath();
+      pts.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));x.stroke();x.setLineDash([]);};
+    const arrow=(p0,p1,color,lw,head)=>{line([p0,p1],color,lw);const ang=Math.atan2(p1[1]-p0[1],p1[0]-p0[0]),hh=head||8;
+      x.fillStyle=color;x.beginPath();x.moveTo(p1[0],p1[1]);x.lineTo(p1[0]-hh*Math.cos(ang-0.4),p1[1]-hh*Math.sin(ang-0.4));
+      x.lineTo(p1[0]-hh*Math.cos(ang+0.4),p1[1]-hh*Math.sin(ang+0.4));x.closePath();x.fill();};
+    const label=(p,t,color)=>{x.fillStyle=color;x.font='600 14px '+css.font;x.textAlign='center';x.textBaseline='middle';x.fillText(t,p[0],p[1]);};
+    // 座標軸と観測面
+    arrow(P(0,0,-0.15),P(0,0,L+0.45),css.axis,1.4); label(P(0,0,L+0.62),'z',css.muted);
+    arrow(P(-1.25,0,0),P(1.3,0,0),css.axis,1); label(P(1.48,0,0),'x',css.ex);
+    arrow(P(0,-1.25,0),P(0,1.3,0),css.axis,1); label(P(0,1.48,0),'y',css.ey);
+    const sq=[[-1.25,-1.25],[1.25,-1.25],[1.25,1.25],[-1.25,1.25],[-1.25,-1.25]].map(q=>P(q[0],q[1],L));
+    x.fillStyle=css.grid; x.globalAlpha=0.35; x.beginPath(); sq.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])); x.fill(); x.globalAlpha=1;
+    line(sq,css.grid,1);
+    label(P(0,-1.55,L),'観測点',css.muted);
+    // 成分の波
+    const N=220, ex=[],ey=[],tip=[];
+    for(let i=0;i<=N;i++){const z=L*i/N; const [a,b]=fields(z); ex.push(P(a,0,z)); ey.push(P(0,b,z)); tip.push(P(a,b,z));}
+    line(ex,css.ex,2.2); line(ey,css.ey,2.2);
+    // 合成電場のベクトル（間引いて表示）
+    x.globalAlpha=0.55;
+    for(let i=0;i<=N;i+=10){const z=L*i/N; const [a,b]=fields(z); line([P(0,0,z),P(a,b,z)],css.sum,1.2);}
+    x.globalAlpha=1;
+    line(tip,css.sum,2.6);
+    const [a,b]=fields(L); arrow(P(0,0,L),P(a,b,L),css.sum,3,10);
+  }
+
+  // ---- 光源の方を向いて見た図 ----
+  function draw2d(){
+    const c=$('c2d'); const [x,w,h]=fitCanvas(c); x.clearRect(0,0,w,h);
+    const cx=w/2, cy=h/2, s=Math.min(w,h)*0.3;
+    const T=(X,Y)=>[cx+s*X, cy-s*Y];
+    const line=(p0,p1,color,lw,dash)=>{x.strokeStyle=color;x.lineWidth=lw;x.setLineDash(dash||[]);x.beginPath();x.moveTo(p0[0],p0[1]);x.lineTo(p1[0],p1[1]);x.stroke();x.setLineDash([]);};
+    const head=(p0,p1,color,hh)=>{const ang=Math.atan2(p1[1]-p0[1],p1[0]-p0[0]);x.fillStyle=color;x.beginPath();x.moveTo(p1[0],p1[1]);
+      x.lineTo(p1[0]-hh*Math.cos(ang-0.4),p1[1]-hh*Math.sin(ang-0.4));x.lineTo(p1[0]-hh*Math.cos(ang+0.4),p1[1]-hh*Math.sin(ang+0.4));x.closePath();x.fill();};
+    const text=(p,t,color,al)=>{x.fillStyle=color;x.font='600 15px '+css.font;x.textAlign=al||'center';x.textBaseline='middle';x.fillText(t,p[0],p[1]);};
+    // 軸
+    line(T(-1.6,0),T(1.6,0),css.axis,1); head(T(-1.6,0),T(1.6,0),css.axis,7); text([T(1.6,0)[0]-2,T(0,0.18)[1]],'x',css.ex,'right');
+    line(T(0,-1.6),T(0,1.6),css.axis,1); head(T(0,-1.6),T(0,1.6),css.axis,7); text([T(0,1.6)[0]+12,T(0,1.6)[1]+4],'y',css.ey,'left');
+    // 軌跡（1周期）
+    const d=st.delta*Math.PI/180, b=st.ratio;
+    x.strokeStyle=css.sum; x.globalAlpha=0.35; x.lineWidth=2; x.beginPath();
+    for(let i=0;i<=200;i++){const th=2*Math.PI*i/200; const p=T(Math.cos(th),b*Math.cos(th+d)); i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]);}
+    x.stroke(); x.globalAlpha=1;
+    // 現在の電場
+    const [ex,ey]=fields(L);
+    line(T(ex,0),T(ex,ey),css.ex,1.2,[4,4]); line(T(0,ey),T(ex,ey),css.ey,1.2,[4,4]);
+    line(T(0,0),T(ex,0),css.ex,4); line(T(0,0),T(0,ey),css.ey,4);
+    line(T(0,0),T(ex,ey),css.sum,3.2); head(T(0,0),T(ex,ey),css.sum,11);
+    x.fillStyle=css.sum; const tp=T(ex,ey); x.beginPath(); x.arc(tp[0],tp[1],4,0,7); x.fill();
+    // 回転の向きの矢印
+    const sn=Math.sin(d);
+    if(b>0.02 && Math.abs(sn)>0.02){
+      const r=s*1.45, sgn=sn>0?1:-1, a0=0.25*Math.PI, a1=a0+sgn*0.55*Math.PI;
+      x.strokeStyle=css.muted; x.lineWidth=1.6; x.beginPath();
+      x.arc(cx,cy,r,-a0,-a1,sgn>0); x.stroke();
+      const pe=[cx+r*Math.cos(-a1),cy+r*Math.sin(-a1)], pb=[cx+r*Math.cos(-a1+sgn*0.08),cy+r*Math.sin(-a1+sgn*0.08)];
+      head(pb,pe,css.muted,9);
+    }
+  }
+
+  function classify(){
+    const d=((st.delta%360)+540)%360-180, b=st.ratio, sn=Math.sin(d*Math.PI/180);
+    const lin = b<0.02 || Math.abs(sn)<0.02;
+    let name;
+    if(lin) name='直線偏光';
+    else if(Math.abs(b-1)<0.02 && Math.abs(Math.abs(d)-90)<0.5) name='円偏光';
+    else name='楕円偏光';
+    if(!lin) name+= sn>0?'（反時計回り）':'（時計回り）';
+    $('stateText').textContent=name;
+    $('eqText').textContent='Ex = cos ωt,  Ey = '+b.toFixed(2)+' cos(ωt − δ)';
+    document.querySelectorAll('[data-d]').forEach(btn=>btn.setAttribute('aria-pressed',String(+btn.dataset.d===d && Math.abs(b-1)<0.02)));
+  }
+
+  function render(){draw3d(); draw2d();}
+  let last=null;
+  function loop(ts){
+    if(st.playing){ if(last!==null) st.phase=(st.phase+(ts-last)/1000*st.speed*2*Math.PI)%(2*Math.PI*1000); last=ts; render(); }
+    else last=null;
+    requestAnimationFrame(loop);
+  }
+
+  // ---- 操作 ----
+  const setDelta=v=>{st.delta=v; $('delta').value=v; $('deltaOut').textContent=(v<0?'−':'')+Math.abs(v)+'°'; classify(); render();};
+  $('delta').addEventListener('input',e=>setDelta(+e.target.value));
+  $('ratio').addEventListener('input',e=>{st.ratio=+e.target.value; $('ratioOut').textContent=st.ratio.toFixed(2); classify(); render();});
+  $('speed').addEventListener('input',e=>{st.speed=+e.target.value; $('speedOut').textContent=st.speed.toFixed(2);});
+  document.querySelectorAll('[data-d]').forEach(b=>b.addEventListener('click',()=>{st.ratio=1;$('ratio').value=1;$('ratioOut').textContent='1.00';setDelta(+b.dataset.d);}));
+  const setPlay=p=>{st.playing=p; $('play').textContent=p?'一時停止':'再生';};
+  $('play').addEventListener('click',()=>setPlay(!st.playing));
+  $('resetView').addEventListener('click',()=>{st.az=-62;st.el=22;render();});
+  // ドラッグで3次元表示を回転
+  const c3=$('c3d'); let drag=null;
+  c3.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,az:st.az,el:st.el};c3.setPointerCapture(e.pointerId);c3.style.cursor='grabbing';});
+  c3.addEventListener('pointermove',e=>{if(!drag)return; st.az=drag.az-(e.clientX-drag.x)*0.4; st.el=Math.max(-80,Math.min(80,drag.el+(e.clientY-drag.y)*0.4)); render();});
+  const end=()=>{drag=null;c3.style.cursor='grab';}; c3.addEventListener('pointerup',end); c3.addEventListener('pointercancel',end);
+
+  tokens();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{tokens();render();});
+  new ResizeObserver(()=>render()).observe(document.querySelector('.views'));
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) setPlay(false);
+  st.phase=0.6; classify(); render(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
