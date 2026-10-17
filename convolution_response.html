@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>応答関数とたたみ込み</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one lecture-screen column — equation, four time-aligned strips sharing one cursor, controls beneath */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#1c2330; --muted:#5d6675; --grid:#e3e6eb;
+  --e:#2a5aa6;      /* 入力電場 E */
+  --chi:#b36b12;    /* 応答関数 χ */
+  --prod:#2a8a76;   /* 積と面積 */
+  --p:#b0344a;      /* 出力 P */
+  --cursor:#1c2330;
+  --font-ui:"BIZ UDPGothic","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
+  --font-num:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12161d; --panel:#1a2029; --ink:#e7eaf0; --muted:#9aa3b2; --grid:#2a313c;
+  --e:#7fa8ec; --chi:#e3a052; --prod:#5cc3ab; --p:#ec7c90; --cursor:#e7eaf0; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161d; --panel:#1a2029; --ink:#e7eaf0; --muted:#9aa3b2; --grid:#2a313c;
+  --e:#7fa8ec; --chi:#e3a052; --prod:#5cc3ab; --p:#ec7c90; --cursor:#e7eaf0; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:16px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 32px}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:16px}
+header{display:grid;gap:6px}
+.eyebrow{font-size:13px;letter-spacing:.08em;color:var(--muted)}
+h1{font-size:clamp(22px,3.2vw,30px);margin:0;line-height:1.3;text-wrap:balance}
+.eq{font-family:"Times New Roman",serif;font-size:clamp(19px,2.6vw,26px);background:var(--panel);border:1px solid var(--grid);
+  border-radius:6px;padding:10px 16px;overflow-x:auto;white-space:nowrap}
+.eq i{font-style:italic}
+.eq .e{color:var(--e)} .eq .c{color:var(--chi)} .eq .p{color:var(--p)}
+.lead{margin:0;color:var(--muted);max-width:68ch}
+
+.strips{display:grid;gap:10px}
+.strip{background:var(--panel);border:1px solid var(--grid);border-radius:6px;padding:8px 10px 6px;display:grid;gap:2px}
+.strip .lab{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;font-size:15px}
+.strip .lab b{font-weight:700}
+.strip .lab span{color:var(--muted);font-size:13px}
+.strip canvas{width:100%;height:118px;display:block}
+.k-e b{color:var(--e)} .k-c b{color:var(--chi)} .k-x b{color:var(--prod)} .k-p b{color:var(--p)}
+
+.controls{display:grid;grid-template-columns:auto 1fr;gap:12px 16px;align-items:center;background:var(--panel);
+  border:1px solid var(--grid);border-radius:6px;padding:12px 14px}
+.controls .row{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;min-width:0}
+.controls label.h{font-size:14px;color:var(--muted);white-space:nowrap}
+button,select{font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--grid);border-radius:4px;padding:6px 12px;cursor:pointer}
+button.primary{background:var(--ink);color:var(--panel);border-color:var(--ink);min-width:6.5em}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--e);outline-offset:2px}
+input[type=range]{width:min(320px,100%);accent-color:var(--ink)}
+.num{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:14px}
+.readout{display:flex;flex-wrap:wrap;gap:6px 20px;font-family:var(--font-num);font-size:15px}
+.readout .p{color:var(--p)}
+.note{margin:0;font-size:14px;color:var(--muted);max-width:72ch}
+.note b{color:var(--ink)}
+@media (max-width:560px){.controls{grid-template-columns:1fr}.strip canvas{height:100px}}
+</style>
+</head><body>
+
+<div class="wrap">
+  <header>
+    <h1>分極は「過去の電場」の重み付き和</h1>
+  </header>
+
+  <div class="eq" aria-label="P of t equals epsilon zero times the integral of chi of t minus t prime times E of t prime">
+    <i class="p">P</i>(<i>t</i>) = <i>ε</i><sub>0</sub> ∫<sub>−∞</sub><sup><i>t</i></sup>
+    <i class="c">χ</i>(<i>t</i> − <i>t</i>′) <i class="e">E</i>(<i>t</i>′) d<i>t</i>′
+    &nbsp;=&nbsp; <i>ε</i><sub>0</sub> ∫<sub>0</sub><sup>∞</sup> <i class="c">χ</i>(<i>τ</i>) <i class="e">E</i>(<i>t</i> − <i>τ</i>) d<i>τ</i>
+  </div>
+  <p class="lead">時刻 <i>t</i> の分極は、それ以前の各時刻 <i>t</i>′ の電場に「どれだけ前か」で決まる重み <i>χ</i>(<i>t</i> − <i>t</i>′) をかけて足し合わせたものです。現在時刻（縦線）を動かすと、重みが一緒に移動し、③の面積が④の値になります。</p>
+
+  <div class="strips">
+    <div class="strip k-e"><div class="lab"><b>① 入力電場 E(t′)</b><span>横軸は過去も含めた時刻 t′</span></div><canvas id="c1" role="img" aria-label="入力電場のグラフ"></canvas></div>
+    <div class="strip k-c"><div class="lab"><b>② 重み χ(t − t′)</b><span>応答関数を裏返して現在時刻 t に置いたもの。t′ &gt; t では 0（因果律）</span></div><canvas id="c2" role="img" aria-label="重み関数のグラフ"></canvas></div>
+    <div class="strip k-x"><div class="lab"><b>③ 積 χ(t − t′) E(t′)</b><span>塗った部分の面積（下側は負）が P(t)/ε₀</span></div><canvas id="c3" role="img" aria-label="積と面積のグラフ"></canvas></div>
+    <div class="strip k-p"><div class="lab"><b>④ 出力 P(t)/ε₀</b><span>細線は比較用の E(t)（縦軸は相対値）</span></div><canvas id="c4" role="img" aria-label="出力分極のグラフ"></canvas></div>
+  </div>
+
+  <div class="controls">
+    <label class="h" for="play">再生</label>
+    <div class="row">
+      <button id="play" class="primary" type="button">一時停止</button>
+      <input id="tslider" type="range" min="0" max="1000" value="0" aria-label="現在時刻 t">
+      <div class="readout"><span>t = <span id="tval" class="num">0.00</span></span><span class="p">P(t)/ε₀ = <span id="pval" class="num">0.000</span></span></div>
+    </div>
+    <label class="h" for="input">入力電場</label>
+    <div class="row">
+      <select id="input">
+        <option value="impulse">インパルス（短いパルス）</option>
+        <option value="two">2つのパルス</option>
+        <option value="step">ステップ</option>
+        <option value="sine" selected>正弦波</option>
+      </select>
+    </div>
+    <label class="h" for="resp">応答関数</label>
+    <div class="row">
+      <select id="resp">
+        <option value="relax" selected>緩和型 χ(τ) ∝ e^(−τ/τ₀)</option>
+        <option value="osc">減衰振動型 χ(τ) ∝ e^(−τ/τ₀) sin ω₀τ</option>
+      </select>
+      <label class="h" for="tau">τ₀</label>
+      <input id="tau" type="range" min="0.1" max="3" step="0.05" value="0.6" aria-label="応答時間 tau0">
+      <span id="tauv" class="num">0.60</span>
+    </div>
+  </div>
+
+  <p class="note" id="note"></p>
+</div>
+
+<script>
+(function(){
+  const T0=-2, T1=12, DT=0.01, N=Math.round((T1-T0)/DT)+1;
+  const tt=new Float64Array(N); for(let i=0;i<N;i++) tt[i]=T0+i*DT;
+  const PERIOD=3, W=2*Math.PI/PERIOD, W0=2*Math.PI/1.2;
+  const st={t:0,playing:true,input:'sine',resp:'relax',tau:0.6};
+  const E=new Float64Array(N), chiT=new Float64Array(N), P=new Float64Array(N);
+  const el=id=>document.getElementById(id);
+  const cv=[el('c1'),el('c2'),el('c3'),el('c4')];
+  let css={};
+
+  function readTokens(){const s=getComputedStyle(document.documentElement);
+    for(const k of ['panel','ink','muted','grid','e','chi','prod','p','cursor']) css[k]=s.getPropertyValue('--'+k).trim();}
+
+  function inputAt(t){
+    const g=(c,s)=>Math.exp(-0.5*((t-c)/s)**2)/(s*Math.sqrt(2*Math.PI));
+    switch(st.input){
+      case 'impulse': return g(1,0.06);
+      case 'two': return g(1,0.06)+0.6*g(3.5,0.06);
+      case 'step': return t>=1?1:0;
+      default: return t>=0?Math.sin(W*t):0;
+    }
+  }
+  function chi(tau){ // causal response, normalized to unit area for the relax type
+    if(tau<0) return 0;
+    if(st.resp==='relax') return Math.exp(-tau/st.tau)/st.tau;
+    return Math.exp(-tau/st.tau)*Math.sin(W0*tau)*W0;
+  }
+  function recompute(){
+    for(let i=0;i<N;i++){E[i]=inputAt(tt[i]); chiT[i]=chi(i*DT);}
+    for(let i=0;i<N;i++){let s=0; for(let j=0;j<=i;j++) s+=chiT[i-j]*E[j]; P[i]=s*DT;}
+    note();
+  }
+  function chiOmega(w){let re=0,im=0; for(let i=0;i<N;i++){const c=chiT[i]; re+=c*Math.cos(w*i*DT); im+=c*Math.sin(w*i*DT);} return [re*DT,im*DT];}
+
+  function note(){
+    const n=el('note');
+    if(st.input==='sine'){
+      const [re,im]=chiOmega(W); const amp=Math.hypot(re,im); const ph=Math.atan2(im,re)*180/Math.PI;
+      n.innerHTML='正弦波を入れると、立ち上がりのあと <b>P(t) も同じ周期で振動</b>し、振幅と位相だけが変わります。いまの設定では |χ(ω)| = <span class="num">'+amp.toFixed(2)+'</span>、位相の遅れ arg χ(ω) = <span class="num">'+ph.toFixed(0)+'°</span>。τ₀ を大きくすると遅れが増え、振幅は小さくなります。これが χ(ω) が複素数になる理由です。';
+    } else if(st.input==='impulse'){
+      n.innerHTML='短いパルスを入れると、<b>P(t) は応答関数 χ そのものの形</b>になります（時刻 1 だけずれる）。χ(τ) が「インパルス応答」とよばれる理由です。';
+    } else if(st.input==='two'){
+      n.innerHTML='2つのパルスに対する応答は、<b>それぞれの応答の和</b>になります（線形性）。2つ目のパルスが来たとき、1つ目の応答がまだ残っていることに注目してください。';
+    } else {
+      n.innerHTML='ステップ状の電場に対して、分極は<b>すぐには追いつかず</b>、応答時間 τ₀ 程度かけて一定値に近づきます。';
+    }
+  }
+
+  function setupCanvas(c){const r=c.getBoundingClientRect(), d=window.devicePixelRatio||1;
+    const w=Math.max(10,Math.round(r.width*d)), h=Math.max(10,Math.round(r.height*d));
+    if(c.width!==w||c.height!==h){c.width=w;c.height=h;}
+    const x=c.getContext('2d'); x.setTransform(d,0,0,d,0,0); return [x,r.width,r.height];}
+
+  const PADL=34,PADR=10,PADT=8,PADB=20;
+  function frame(x,w,h){
+    x.clearRect(0,0,w,h);
+    const X=t=>PADL+(t-T0)/(T1-T0)*(w-PADL-PADR);
+    x.strokeStyle=css.grid; x.lineWidth=1; x.fillStyle=css.muted; x.font='11px '+getComputedStyle(document.body).getPropertyValue('--font-num');
+    x.textAlign='center'; x.textBaseline='top';
+    for(let t=-2;t<=12;t+=2){const px=X(t); x.beginPath(); x.moveTo(px,PADT); x.lineTo(px,h-PADB); x.stroke(); x.fillText(String(t),px,h-PADB+4);}
+    return X;
+  }
+  function yScale(h,m){const mid=PADT+(h-PADT-PADB)/2, half=(h-PADT-PADB)/2*0.9; return v=>mid-v/m*half;}
+  function maxAbs(a,from,to){let m=1e-9; for(let i=from;i<to;i++){const v=Math.abs(a[i]); if(v>m)m=v;} return m;}
+  function curve(x,X,Y,arr,color,lw,upto,dash){
+    x.strokeStyle=color; x.lineWidth=lw; x.setLineDash(dash||[]); x.beginPath();
+    const n=upto??N; for(let i=0;i<n;i++){const px=X(tt[i]),py=Y(arr[i]); i?x.lineTo(px,py):x.moveTo(px,py);} x.stroke(); x.setLineDash([]);}
+  function axis0(x,X,Y,w){x.strokeStyle=css.muted; x.lineWidth=1; x.beginPath(); x.moveTo(PADL,Y(0)); x.lineTo(w-PADR,Y(0)); x.stroke();}
+  function cursor(x,X,h){const px=X(st.t); x.strokeStyle=css.cursor; x.lineWidth=1.5; x.setLineDash([4,3]); x.beginPath(); x.moveTo(px,PADT-2); x.lineTo(px,h-PADB); x.stroke(); x.setLineDash([]);}
+  function label(x,txt,color){x.fillStyle=color; x.font='12px '+getComputedStyle(document.body).getPropertyValue('--font-ui'); x.textAlign='left'; x.textBaseline='top'; x.fillText(txt,4,PADT);}
+
+  function draw(){
+    const it=Math.min(N-1,Math.max(0,Math.round((st.t-T0)/DT)));
+    // weights w(t') = chi(t-t')
+    const wgt=new Float64Array(N), prod=new Float64Array(N);
+    for(let j=0;j<N;j++){const k=it-j; wgt[j]=k>=0?chiT[k]:0; prod[j]=wgt[j]*E[j];}
+    // ① E
+    {const [x,w,h]=setupCanvas(cv[0]); const X=frame(x,w,h); const Y=yScale(h,maxAbs(E,0,N));
+     axis0(x,X,Y,w); curve(x,X,Y,E,css.e,2.2); cursor(x,X,h); label(x,'E',css.e);}
+    // ② weight
+    {const [x,w,h]=setupCanvas(cv[1]); const X=frame(x,w,h); const Y=yScale(h,maxAbs(chiT,0,N));
+     axis0(x,X,Y,w);
+     x.fillStyle=css.chi; x.globalAlpha=0.14; x.beginPath(); x.moveTo(X(tt[0]),Y(0));
+     for(let j=0;j<N;j++) x.lineTo(X(tt[j]),Y(wgt[j])); x.lineTo(X(tt[N-1]),Y(0)); x.closePath(); x.fill(); x.globalAlpha=1;
+     curve(x,X,Y,wgt,css.chi,2.2); cursor(x,X,h);
+     x.fillStyle=css.muted; x.font='12px '+getComputedStyle(document.body).getPropertyValue('--font-ui'); x.textAlign='right'; x.textBaseline='top';
+     const px=X(st.t); if(px>PADL+90) x.fillText('← 過去ほど重みが小さい',px-6,PADT);
+     label(x,'χ',css.chi);}
+    // ③ product + area
+    {const [x,w,h]=setupCanvas(cv[2]); const X=frame(x,w,h);
+     let m=1e-9; for(let i=0;i<N;i++){const r=Math.abs(chiT[i])*maxE; if(r>m)m=r;} const Y=yScale(h,m);
+     axis0(x,X,Y,w);
+     x.fillStyle=css.prod; x.globalAlpha=0.28; x.beginPath(); x.moveTo(X(tt[0]),Y(0));
+     for(let j=0;j<=it;j++) x.lineTo(X(tt[j]),Y(prod[j])); x.lineTo(X(tt[it]),Y(0)); x.closePath(); x.fill(); x.globalAlpha=1;
+     curve(x,X,Y,prod,css.prod,2,it+1); cursor(x,X,h); label(x,'χE',css.prod);}
+    // ④ P
+    {const [x,w,h]=setupCanvas(cv[3]); const X=frame(x,w,h);
+     const mp=maxAbs(P,0,N), me=maxE; const Y=yScale(h,mp); const Ye=yScale(h,me);
+     axis0(x,X,Y,w);
+     x.globalAlpha=0.45; curve(x,X,Ye,E,css.e,1,undefined,[3,3]); x.globalAlpha=1;
+     curve(x,X,Y,P,css.p,2.6,it+1);
+     x.fillStyle=css.p; x.beginPath(); x.arc(X(st.t),Y(P[it]),4.5,0,7); x.fill();
+     cursor(x,X,h); label(x,'P/ε₀',css.p);}
+    el('tval').textContent=st.t.toFixed(2);
+    el('pval').textContent=P[it].toFixed(3);
+    el('tslider').value=String(Math.round((st.t-T0)/(T1-T0)*1000));
+  }
+  let maxE=1;
+  function refresh(){recompute(); maxE=maxAbs(E,0,N); draw();}
+
+  let last=null;
+  function loop(ts){
+    if(st.playing){ if(last!==null){ st.t+=(ts-last)/1000*1.2; if(st.t>T1){st.t=T0;} } last=ts; draw(); }
+    else last=null;
+    requestAnimationFrame(loop);
+  }
+  function setPlaying(p){st.playing=p; el('play').textContent=p?'一時停止':'再生';}
+
+  el('play').addEventListener('click',()=>setPlaying(!st.playing));
+  el('tslider').addEventListener('input',e=>{setPlaying(false); st.t=T0+(+e.target.value)/1000*(T1-T0); draw();});
+  el('input').addEventListener('change',e=>{st.input=e.target.value; refresh();});
+  el('resp').addEventListener('change',e=>{st.resp=e.target.value; refresh();});
+  el('tau').addEventListener('input',e=>{st.tau=+e.target.value; el('tauv').textContent=st.tau.toFixed(2); refresh();});
+
+  readTokens();
+  const mq=window.matchMedia('(prefers-color-scheme: dark)');
+  const retheme=()=>{readTokens(); draw();};
+  mq.addEventListener?.('change',retheme);
+  new MutationObserver(retheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+  new ResizeObserver(()=>draw()).observe(document.querySelector('.strips'));
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) setPlaying(false);
+  st.t=6.5; refresh();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body></html>
