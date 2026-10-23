@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>反射と屈折</title>
+<style>
+/* 左：光線図／波面アニメーション（切り替え）。右：反射率のグラフ。下：数値と操作 */
+:root{
+  --bg:#f4f6f8; --panel:#ffffff; --ink:#18202b; --muted:#5b6574; --grid:#dde2e8;
+  --s:#b02a4a;      /* s 偏光 */
+  --p:#1f6aa5;      /* p 偏光 */
+  --u:#6b4fa0;      /* 無偏光 */
+  --inc:#18202b;    /* 入射光 */
+  --m1:#ffffff; --m2:#dfe9f3; --axis:#8a93a1; --mark:#d08a12;
+  --font:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Meiryo","Noto Sans JP",system-ui,sans-serif;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#11151b; --panel:#191f27; --ink:#e6e9ee; --muted:#9aa4b3; --grid:#2a313b;
+  --s:#f07a95; --p:#6fb3ea; --u:#b39ae6; --inc:#e6e9ee;
+  --m1:#191f27; --m2:#22303f; --axis:#6d7684; --mark:#f0b44c; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.55;
+  padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px));
+  padding-top:max(12px,env(safe-area-inset-top,0px));padding-bottom:max(20px,env(safe-area-inset-bottom,0px))}
+.wrap{max-width:1100px;margin:0 auto;display:grid;gap:12px}
+header h1{font-size:clamp(20px,4.6vw,28px);margin:0;line-height:1.3}
+header p{margin:2px 0 0;color:var(--muted);font-size:14px}
+.card{background:var(--panel);border:1px solid var(--grid);border-radius:8px;padding:10px 12px;display:grid;gap:6px;min-width:0}
+.card h2{font-size:16px;margin:0;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.card h2 span{font-size:13px;color:var(--muted);font-weight:400}
+canvas{width:100%;display:block}
+.top{display:grid;grid-template-columns:1.15fr 1fr;gap:12px}
+@media (max-width:760px){.top{grid-template-columns:1fr}}
+#cv{aspect-ratio:4/3}
+#gr{aspect-ratio:4/3;touch-action:none;cursor:crosshair}
+.vals{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:4px 16px;font-size:15px}
+.vals div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dotted var(--grid);padding:2px 0}
+.vals b{font-family:var(--mono);font-weight:600}
+.vals .s b{color:var(--s)} .vals .p b{color:var(--p)} .vals .u b{color:var(--u)}
+.summary{font-size:15px;margin:0;font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.controls{display:grid;gap:12px}
+.group{display:grid;gap:6px}
+.group > span{font-size:14px;color:var(--muted)}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--grid);border-radius:6px;
+  padding:8px 12px;min-height:40px;cursor:pointer}
+button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+button.primary{background:var(--s);color:#fff;border-color:var(--s);min-width:6.5em}
+button:disabled{opacity:.4;cursor:default}
+button:focus-visible,input:focus-visible{outline:2px solid var(--p);outline-offset:2px}
+.row{display:grid;grid-template-columns:9em 1fr 4.6em;gap:8px 10px;align-items:center}
+.row output{font-family:var(--mono);font-size:15px;text-align:right}
+.row.off{opacity:.4}
+input[type=range]{width:100%;accent-color:var(--s);height:28px}
+.note{font-size:13px;color:var(--muted);margin:0}
+@media (max-width:480px){.row{grid-template-columns:6.6em 1fr 4.2em}.row label{font-size:14px}.card{padding:8px}#cv{aspect-ratio:1/1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>反射と屈折</h1>
+    <p>入射角を変えて、s 偏光・p 偏光の反射と屈折を見る</p>
+  </header>
+
+  <div class="top">
+    <section class="card">
+      <h2 id="cvTitle">光線図<span id="cvSub">線の太さが光の強さ（エネルギーの割合）を表します</span></h2>
+      <canvas id="cv" aria-label="界面での反射と屈折の図"></canvas>
+      <div class="btns" role="group" aria-label="表示の切り替え">
+        <button type="button" data-view="ray" aria-pressed="true">光線</button>
+        <button type="button" data-view="wave" aria-pressed="false">波面</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>反射率と入射角<span>グラフをタップ・ドラッグしても入射角を変えられます</span></h2>
+      <canvas id="gr" aria-label="反射率の入射角依存性のグラフ"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--s)"></i>s 偏光</span>
+        <span><i style="background:repeating-linear-gradient(90deg,var(--p) 0 6px,transparent 6px 9px)"></i>p 偏光</span>
+        <span id="lgU"><i style="background:var(--u)"></i>無偏光（平均）</span>
+        <span id="lgT"><i style="background:var(--axis)"></i>透過率 T（細線）</span>
+      </div>
+    </section>
+  </div>
+
+  <section class="card">
+    <p class="summary" id="summary"></p>
+    <div class="vals" id="vals"></div>
+  </section>
+
+  <section class="card controls">
+    <div class="btns">
+      <button type="button" class="primary" id="play">一時停止</button>
+      <button type="button" id="reset">初期状態に戻す</button>
+    </div>
+    <div class="group">
+      <div class="row"><label for="th">入射角 θ<sub>i</sub></label><input type="range" id="th" min="0" max="89.9" step="0.1" value="40"><output id="thO"></output></div>
+      <div class="row"><label for="n1">屈折率 n<sub>1</sub>（上）</label><input type="range" id="n1" min="1" max="2.5" step="0.01" value="1"><output id="n1O"></output></div>
+      <div class="row"><label for="n2">屈折率 n<sub>2</sub>（下）</label><input type="range" id="n2" min="1" max="2.5" step="0.01" value="1.5"><output id="n2O"></output></div>
+      <div class="row" id="spRow"><label for="sp">波の速さ</label><input type="range" id="sp" min="0.1" max="2" step="0.05" value="0.8"><output id="spO"></output></div>
+    </div>
+    <div class="group">
+      <span>偏光</span>
+      <div class="btns" role="group" aria-label="偏光">
+        <button type="button" data-pol="s" aria-pressed="true">s 偏光</button>
+        <button type="button" data-pol="p" aria-pressed="false">p 偏光</button>
+        <button type="button" data-pol="u" aria-pressed="false">無偏光</button>
+      </div>
+    </div>
+    <div class="group">
+      <span>媒質の組み合わせ（上 → 下）</span>
+      <div class="btns">
+        <button type="button" data-n="1,1.5">空気 → ガラス</button>
+        <button type="button" data-n="1.5,1">ガラス → 空気</button>
+        <button type="button" data-n="1,1.33">空気 → 水</button>
+        <button type="button" data-n="1.33,1">水 → 空気</button>
+        <button type="button" data-n="1,2.42">空気 → ダイヤモンド</button>
+      </div>
+    </div>
+    <div class="group">
+      <span>特別な入射角へ</span>
+      <div class="btns">
+        <button type="button" id="goN">垂直入射（0°）</button>
+        <button type="button" id="goB">Brewster 角</button>
+        <button type="button" id="goC">臨界角</button>
+        <button type="button" id="tBtn" aria-pressed="false">グラフに透過率 T も表示</button>
+      </div>
+    </div>
+    <p class="note">角度は界面の法線から測ります。反射率は R = |r|²、透過率は T = (n₂cosθ<sub>t</sub>)/(n₁cosθ<sub>i</sub>)·|t|² で、R + T = 1 です。p 偏光の振幅反射係数の符号は、入射波・反射波・透過波の磁場の向きをそろえる約束で計算しています。波面表示の線は、s 偏光では電場 E<sub>y</sub>、p 偏光では磁場 H<sub>y</sub> の山（無偏光では s 偏光の場合）を表し、線の濃さは波の強さの目安です。透明な媒質（屈折率が実数）を仮定しています。</p>
+  </section>
+</div>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const DEG=Math.PI/180;
+const st={th:40,n1:1,n2:1.5,pol:'s',view:'ray',showT:false,playing:true,t:0,speed:0.8};
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let C={};
+function readColors(){['--ink','--muted','--grid','--s','--p','--u','--inc','--m1','--m2','--axis','--mark','--panel'].forEach(k=>C[k.slice(2)]=css(k));}
+
+/* ---- 複素数 ---- */
+const cx=(re,im=0)=>({re,im});
+const add=(a,b)=>cx(a.re+b.re,a.im+b.im), sub=(a,b)=>cx(a.re-b.re,a.im-b.im);
+const mul=(a,b)=>cx(a.re*b.re-a.im*b.im,a.re*b.im+a.im*b.re);
+const div=(a,b)=>{const d=b.re*b.re+b.im*b.im;return cx((a.re*b.re+a.im*b.im)/d,(a.im*b.re-a.re*b.im)/d);};
+const sc=(k,a)=>cx(k*a.re,k*a.im), abs2=a=>a.re*a.re+a.im*a.im, arg=a=>Math.atan2(a.im,a.re);
+
+/* ---- フレネルの式 ---- */
+function fres(thDeg,n1,n2){
+  const ti=thDeg*DEG, ci=Math.cos(ti), si=Math.sin(ti);
+  const st2=(n1/n2*si)**2, tir=st2>1;
+  const ct=tir?cx(0,Math.sqrt(st2-1)):cx(Math.sqrt(1-st2)); // 全反射では cosθt は正の純虚数（減衰する向き）
+  const A=cx(n1*ci), B=sc(n2,ct), Cc=cx(n2*ci), Dd=sc(n1,ct);
+  const rs=div(sub(A,B),add(A,B)), ts=div(cx(2*n1*ci),add(A,B));
+  const rp=div(sub(Cc,Dd),add(Cc,Dd)), tpE=div(cx(2*n1*ci),add(Cc,Dd));
+  const tpH=add(cx(1),rp); // 磁場の振幅透過係数
+  const Rs=tir?1:abs2(rs), Rp=tir?1:abs2(rp);
+  const fac=tir?0:(n2*ct.re)/(n1*ci||1e-12);
+  const Ts=tir?0:fac*abs2(ts), Tp=tir?0:fac*abs2(tpE);
+  const thetaT=tir?null:Math.asin(Math.min(1,n1/n2*si))/DEG;
+  return {rs,ts,rp,tpE,tpH,Rs,Rp,Ts,Tp,tir,thetaT,ct};
+}
+const brewster=()=>Math.atan(st.n2/st.n1)/DEG;
+const critical=()=>st.n1>st.n2?Math.asin(st.n2/st.n1)/DEG:null;
+
+/* ---- キャンバス ---- */
+function fit(cv){const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;
+  const w=Math.max(10,Math.round(r.width*d)),h=Math.max(10,Math.round(r.height*d));
+  if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}
+  const g=cv.getContext('2d');g.setTransform(d,0,0,d,0,0);return {g,w:r.width,h:r.height};}
+
+function arrowHead(g,x,y,ang,len,col){g.save();g.fillStyle=col;g.translate(x,y);g.rotate(ang);
+  g.beginPath();g.moveTo(0,0);g.lineTo(-len,len*0.45);g.lineTo(-len,-len*0.45);g.closePath();g.fill();g.restore();}
+
+function drawMedia(g,w,h,cy,F,noLabel){
+  g.fillStyle=C.m1;g.fillRect(0,0,w,cy);
+  g.fillStyle=C.m2;g.fillRect(0,cy,w,h-cy);
+  g.strokeStyle=C.ink;g.lineWidth=1.5;g.beginPath();g.moveTo(0,cy);g.lineTo(w,cy);g.stroke();
+  if(noLabel)return;
+  g.fillStyle=C.muted;g.font='13px '+css('--font');g.textBaseline='top';g.textAlign='left';
+  g.fillText('媒質1　n₁ = '+st.n1.toFixed(2),8,6);
+  g.textBaseline='bottom';g.fillText('媒質2　n₂ = '+st.n2.toFixed(2),8,h-6);
+}
+
+function dirs(F){const ti=st.th*DEG;
+  const di={x:Math.sin(ti),y:Math.cos(ti)}, dr={x:Math.sin(ti),y:-Math.cos(ti)};
+  let dt=null; if(!F.tir){const tt=F.thetaT*DEG;dt={x:Math.sin(tt),y:Math.cos(tt)};}
+  return {di,dr,dt};}
+
+function polCols(){return st.pol==='s'?[C.s]:st.pol==='p'?[C.p]:[C.s,C.p];}
+
+/* 光線図 */
+function drawRays(){
+  const {g,w,h}=fit($('cv')); const F=fres(st.th,st.n1,st.n2);
+  const cx0=w/2, cy=h*0.52, L=Math.min(w,h)*0.46;
+  drawMedia(g,w,h,cy,F);
+  const {di,dr,dt}=dirs(F);
+  // 法線
+  g.setLineDash([5,5]);g.strokeStyle=C.axis;g.lineWidth=1;g.beginPath();g.moveTo(cx0,cy-L*1.05);g.lineTo(cx0,cy+L*0.95);g.stroke();g.setLineDash([]);
+  const R=st.pol==='s'?F.Rs:st.pol==='p'?F.Rp:(F.Rs+F.Rp)/2, T=F.tir?0:1-R;
+  const W0=Math.max(6,Math.min(w,h)*0.035);
+  const col=st.pol==='s'?C.s:st.pol==='p'?C.p:C.u;
+  function ray(x0,y0,x1,y1,frac,c,label){
+    if(frac<=0.0005)return;
+    g.strokeStyle=c;g.lineCap='butt';g.lineWidth=Math.max(1.2,W0*frac);g.globalAlpha=0.85;
+    g.beginPath();g.moveTo(x0,y0);g.lineTo(x1,y1);g.stroke();g.globalAlpha=1;
+    const ang=Math.atan2(y1-y0,x1-x0), mx=(x0+x1)/2, my=(y0+y1)/2;
+    arrowHead(g,mx+Math.cos(ang)*12,my+Math.sin(ang)*12,ang,10+W0*frac*0.6,c);
+  }
+  // 全反射：エバネッセント波のしみ出しを淡く
+  if(F.tir){const q=Math.sqrt((st.n1*Math.sin(st.th*DEG))**2-st.n2**2);
+    const dpx=Math.min(h*0.4,(L*0.25)/(2*Math.PI*Math.max(q,0.02))*4);
+    const grd=g.createLinearGradient(0,cy,0,cy+dpx*3);grd.addColorStop(0,col);grd.addColorStop(1,'rgba(0,0,0,0)');
+    g.globalAlpha=0.28;g.fillStyle=grd;g.fillRect(cx0-L*0.35,cy,L*0.7,dpx*3);g.globalAlpha=1;
+    g.fillStyle=C.muted;g.font='12px '+css('--font');g.textAlign='center';g.textBaseline='top';
+    g.fillText('エバネッセント波（エネルギーは運ばない）',cx0,cy+6);}
+  ray(cx0-L*di.x,cy-L*di.y,cx0,cy,1,C.inc);
+  ray(cx0,cy,cx0+L*dr.x,cy+L*dr.y,R,col);
+  if(dt) ray(cx0,cy,cx0+L*dt.x,cy+L*dt.y,T,col);
+  // 偏光の印
+  function marks(x0,y0,d,len,fs,fp){
+    let pols=st.pol==='u'?['s','p']:[st.pol];
+    pols=pols.filter(k=>(k==='s'?fs:fp)>0.002); if(!pols.length)return;
+    [0.3,0.62].forEach((f,i)=>{const px=x0+d.x*len*f, py=y0+d.y*len*f; const pk=pols[i%pols.length];
+      if(pk==='s'){g.strokeStyle=C.s;g.fillStyle=C.panel;g.lineWidth=1.6;g.beginPath();g.arc(px,py,6,0,2*Math.PI);g.fill();g.stroke();
+        g.fillStyle=C.s;g.beginPath();g.arc(px,py,2,0,2*Math.PI);g.fill();}
+      else{const nx=-d.y, ny=d.x, a=11;g.strokeStyle=C.p;g.lineWidth=2;g.beginPath();g.moveTo(px-nx*a,py-ny*a);g.lineTo(px+nx*a,py+ny*a);g.stroke();
+        arrowHead(g,px+nx*a,py+ny*a,Math.atan2(ny,nx),7,C.p);arrowHead(g,px-nx*a,py-ny*a,Math.atan2(-ny,-nx),7,C.p);}
+    });}
+  marks(cx0-L*di.x,cy-L*di.y,di,L,1,1);
+  marks(cx0,cy,dr,L,F.Rs,F.Rp);
+  if(dt)marks(cx0,cy,dt,L,F.Ts,F.Tp);
+  // 角度
+  g.strokeStyle=C.muted;g.lineWidth=1;const ra=Math.min(w,h)*0.11;
+  const a0=-Math.PI/2;
+  g.beginPath();g.arc(cx0,cy,ra,a0-st.th*DEG,a0);g.stroke();
+  g.beginPath();g.arc(cx0,cy,ra*1.18,a0,a0+st.th*DEG);g.stroke();
+  g.fillStyle=C.ink;g.font='italic 14px '+css('--font');g.textAlign='center';g.textBaseline='middle';
+  const lab=(ang,r,t)=>g.fillText(t,cx0+Math.cos(ang)*r,cy+Math.sin(ang)*r);
+  if(st.th>4){lab(a0-st.th*DEG/2,ra+16,'θᵢ');lab(a0+st.th*DEG/2,ra*1.18+16,'θᵣ');}
+  if(dt&&F.thetaT>3){g.beginPath();g.arc(cx0,cy,ra,Math.PI/2-F.thetaT*DEG,Math.PI/2);g.stroke();lab(Math.PI/2-F.thetaT*DEG/2,ra+16,'θₜ');}
+  // 割合
+  g.font='bold 14px '+css('--font');g.fillStyle=col;
+  const tx=(x,y,t,al)=>{const tw=g.measureText(t).width;
+    if(al==='left'){x=Math.min(x,w-tw-4);}else{x=Math.min(Math.max(x,tw/2+4),w-tw/2-4);}
+    g.textAlign=al;g.fillText(t,x,y);};
+  tx(cx0+L*dr.x*0.78+8,cy+L*dr.y*0.78-14,'R = '+(R*100).toFixed(1)+'%','left');
+  if(dt)tx(cx0+L*dt.x*0.8+10,cy+L*dt.y*0.8,'T = '+(T*100).toFixed(1)+'%','left');
+  else{g.fillStyle=C.mark;tx(cx0+L*0.42,cy+L*0.42,'全反射','center');}
+}
+
+/* 波面アニメーション */
+function drawWaves(){
+  const {g,w,h}=fit($('cv')); const F=fres(st.th,st.n1,st.n2);
+  const cx0=w/2, cy=h*0.52, S=Math.min(w,h);
+  drawMedia(g,w,h,cy,F,true);
+  const {di,dr,dt}=dirs(F);
+  const lam0=S/6.2, k1=2*Math.PI*st.n1/lam0, k2=2*Math.PI*st.n2/lam0;
+  const wb=S*0.30, L=S*0.75, ph=st.t; // ph = ωt
+  const pol=st.pol==='p'?'p':'s';
+  const r=pol==='s'?F.rs:F.rp, tc=pol==='s'?F.ts:F.tpH;
+  const Rv=pol==='s'?F.Rs:F.Rp, Tv=F.tir?0:1-Rv;
+  const colW=pol==='s'?C.s:C.p;
+  // 帯の中に波の山を描く
+  function band(d,k,phase0,alpha,col,region,dash){
+    g.save();
+    g.beginPath(); if(region===1)g.rect(0,0,w,cy); else g.rect(0,cy,w,h-cy); g.clip();
+    const nx=-d.y, ny=d.x;
+    g.beginPath();
+    const p=(s,u)=>[cx0+d.x*s+nx*u, cy+d.y*s+ny*u];
+    const q=[p(-L,-wb/2),p(L,-wb/2),p(L,wb/2),p(-L,wb/2)];
+    g.moveTo(...q[0]);q.slice(1).forEach(v=>g.lineTo(...v));g.closePath();
+    g.globalAlpha=0.10*alpha+0.03;g.fillStyle=col;g.fill();g.clip();g.globalAlpha=Math.max(0.12,alpha);
+    g.strokeStyle=col;g.lineWidth=2.2;if(dash)g.setLineDash([7,5]);
+    const lam=2*Math.PI/k;
+    // 山の条件：k s - ωt + φ = 2πm
+    const s0=(ph-phase0)/k; const m0=Math.floor((-L-s0)/lam), m1=Math.ceil((L-s0)/lam);
+    for(let m=m0;m<=m1;m++){const s=s0+m*lam;g.beginPath();g.moveTo(...p(s,-wb/2-2));g.lineTo(...p(s,wb/2+2));g.stroke();}
+    g.restore();
+  }
+  band(di,k1,0,1,C.inc,1,false);
+  band(dr,k1,arg(r),Math.sqrt(Rv),colW,1,true);
+  if(!F.tir){ band(dt,k2,arg(tc),Math.sqrt(Tv),colW,2,false); }
+  else{ // エバネッセント波：界面に垂直な山が x 方向に進み、z 方向に減衰
+    const kx=k1*Math.sin(st.th*DEG), q=Math.sqrt((st.n1*Math.sin(st.th*DEG))**2-st.n2**2);
+    const dd=lam0/(2*Math.PI*q); const half=wb/2/Math.cos(st.th*DEG);
+    const zmax=Math.min(h-cy-24,dd*3);
+    const lam=2*Math.PI/kx, x0=(ph-arg(tc))/kx;
+    g.save();g.beginPath();g.rect(cx0-half,cy,2*half,h-cy);g.clip();
+    for(let m=Math.floor((-half-x0)/lam);m<=Math.ceil((half-x0)/lam);m++){
+      const x=cx0+x0+m*lam;const grd=g.createLinearGradient(0,cy,0,cy+zmax);
+      grd.addColorStop(0,colW);grd.addColorStop(1,'rgba(128,128,128,0)');
+      g.strokeStyle=grd;g.lineWidth=2.4;g.beginPath();g.moveTo(x,cy);g.lineTo(x,cy+zmax);g.stroke();}
+    g.restore();
+    g.fillStyle=C.muted;g.font='12px '+css('--font');g.textAlign='left';g.textBaseline='top';
+    {const t='しみ込む深さ d = '+(dd/lam0).toFixed(2)+' λ₀', tw=g.measureText(t).width; let x=cx0+half+6; if(x+tw>w-4)x=w-4-tw; g.globalAlpha=0.85;g.fillStyle=C.panel;g.fillRect(x-3,cy+4,tw+6,17);g.globalAlpha=1;g.fillStyle=C.muted;g.fillText(t,x,cy+6);}
+  }
+  // 界面上の山の位置（入射波）
+  const kx=k1*Math.sin(st.th*DEG);
+  if(kx>1e-6){const half=wb/2/Math.cos(st.th*DEG), lam=2*Math.PI/kx, x0=ph/kx;
+    for(let m=Math.floor((-half-x0)/lam);m<=Math.ceil((half-x0)/lam);m++){const x=cx0+x0+m*lam;
+      if(Math.abs(x-cx0)>half)continue;g.fillStyle=C.mark;g.beginPath();g.arc(x,cy,4,0,2*Math.PI);g.fill();}}
+  // 法線
+  g.setLineDash([5,5]);g.strokeStyle=C.axis;g.lineWidth=1;g.beginPath();g.moveTo(cx0,0);g.lineTo(cx0,h);g.stroke();g.setLineDash([]);
+  // 凡例
+  g.font='12px '+css('--font');g.textBaseline='top';
+  const box=(t,x,y,col,al)=>{const tw=g.measureText(t).width;const x0=al==='right'?x-tw:x;
+    g.globalAlpha=0.85;g.fillStyle=C.panel;g.fillRect(x0-3,y-2,tw+6,17);g.globalAlpha=1;g.fillStyle=col;g.textAlign='left';g.fillText(t,x0,y);};
+  if(w>=520){box('実線：入射波・屈折波　破線：反射波',w-8,6,C.muted,'right');box('● 界面上の入射波の山',w-8,24,C.mark,'right');}
+  else{box('実線：入射・屈折波　破線：反射波',8,26,C.muted,'left');box('● 界面上の入射波の山',8,44,C.mark,'left');}
+  box('媒質1　n₁ = '+st.n1.toFixed(2),8,6,C.muted,'left');
+  box('媒質2　n₂ = '+st.n2.toFixed(2),8,h-21,C.muted,'left');
+}
+
+/* グラフ */
+const GP={l:44,r:12,t:12,b:40};
+function drawGraph(){
+  const {g,w,h}=fit($('gr'));
+  const X=th=>GP.l+(w-GP.l-GP.r)*th/90, Y=v=>GP.t+(h-GP.t-GP.b)*(1-v);
+  g.clearRect(0,0,w,h);
+  g.strokeStyle=C.grid;g.lineWidth=1;g.font='12px '+css('--font');g.fillStyle=C.muted;
+  for(let a=0;a<=90;a+=15){g.beginPath();g.moveTo(X(a),Y(0));g.lineTo(X(a),Y(1));g.stroke();g.textAlign='center';g.textBaseline='top';g.fillText(a+'°',X(a),Y(0)+4);}
+  for(let v=0;v<=1.0001;v+=0.25){g.beginPath();g.moveTo(X(0),Y(v));g.lineTo(X(90),Y(v));g.stroke();g.textAlign='right';g.textBaseline='middle';g.fillText(v.toFixed(2),X(0)-4,Y(v));}
+  g.textAlign='center';g.textBaseline='bottom';g.fillText('入射角 θᵢ',(X(0)+X(90))/2,h-2);
+  const N=360, curve=(f,col,dash,lw)=>{g.strokeStyle=col;g.lineWidth=lw;g.setLineDash(dash);g.beginPath();
+    for(let i=0;i<=N;i++){const a=Math.min(89.99,90*i/N);const v=f(fres(a,st.n1,st.n2));i?g.lineTo(X(a),Y(v)):g.moveTo(X(a),Y(v));}
+    g.stroke();g.setLineDash([]);};
+  if(st.showT){curve(F=>F.Ts,C.s,[],1);curve(F=>F.Tp,C.p,[6,3],1);}
+  curve(F=>F.Rs,C.s,[],2.4);
+  curve(F=>F.Rp,C.p,[8,4],2.4);
+  if(st.pol==='u')curve(F=>(F.Rs+F.Rp)/2,C.u,[],1.6);
+  // 特別な角度
+  const mk=(a,t)=>{g.strokeStyle=C.mark;g.setLineDash([3,3]);g.lineWidth=1.2;g.beginPath();g.moveTo(X(a),Y(0));g.lineTo(X(a),Y(1));g.stroke();g.setLineDash([]);
+    g.fillStyle=C.mark;g.textBaseline='top';const right=a>70;const x=X(a)+(right?-3:3),y=Y(0.97);
+    g.font='13px '+css('--font');const w1=g.measureText('θ').width;g.font='10px '+css('--font');const w2=g.measureText(t).width;
+    const x0=right?x-w1-w2:x;g.textAlign='left';g.font='13px '+css('--font');g.fillText('θ',x0,y);g.font='10px '+css('--font');g.fillText(t,x0+w1,y+6);g.font='12px '+css('--font');};
+  if(Math.abs(st.n1-st.n2)>1e-3)mk(brewster(),'B');
+  const tc=critical(); if(tc!==null)mk(tc,'c');
+  // カーソル
+  const F=fres(st.th,st.n1,st.n2);
+  g.strokeStyle=C.ink;g.lineWidth=1.5;g.beginPath();g.moveTo(X(st.th),Y(0));g.lineTo(X(st.th),Y(1));g.stroke();
+  [[F.Rs,C.s],[F.Rp,C.p]].concat(st.pol==='u'?[[(F.Rs+F.Rp)/2,C.u]]:[]).forEach(([v,c])=>{g.fillStyle=c;g.beginPath();g.arc(X(st.th),Y(v),5,0,2*Math.PI);g.fill();});
+}
+
+/* 数値と説明 */
+function fmtPct(v){return (v*100).toFixed(1)+'%';}
+function updateText(){
+  const F=fres(st.th,st.n1,st.n2), tB=brewster(), tC=critical();
+  const items=[
+    ['屈折角 θ<sub>t</sub>',F.tir?'なし（全反射）':F.thetaT.toFixed(1)+'°',''],
+    ['反射率 R（s）',fmtPct(F.Rs),'s'],['反射率 R（p）',fmtPct(F.Rp),'p'],
+    ['透過率 T（s）',fmtPct(F.Ts),'s'],['透過率 T（p）',fmtPct(F.Tp),'p'],
+    ['反射率（無偏光）',fmtPct((F.Rs+F.Rp)/2),'u'],
+    ['Brewster 角 θ<sub>B</sub>',Math.abs(st.n1-st.n2)>1e-3?tB.toFixed(1)+'°':'—',''],
+    ['臨界角 θ<sub>c</sub>',tC!==null?tC.toFixed(1)+'°':'なし',''],
+  ];
+  if(!F.tir){const lam=v=>(1/v).toFixed(2)+' λ₀';items.push(['波長 媒質1 / 2',lam(st.n1)+' / '+lam(st.n2),'']);}
+  else{const q=Math.sqrt((st.n1*Math.sin(st.th*DEG))**2-st.n2**2);items.push(['しみ込む深さ d',(1/(2*Math.PI*q)).toFixed(2)+' λ₀','']);}
+  $('vals').innerHTML=items.map(([k,v,c])=>`<div class="${c}"><span>${k}</span><b>${v}</b></div>`).join('');
+  let s;
+  if(Math.abs(st.n1-st.n2)<1e-3) s='屈折率が等しいので界面はなく、光はまったく反射しません。';
+  else if(F.tir) s='臨界角を超えたので全反射です。s 偏光も p 偏光も反射率は 100% で、媒質2には界面に沿って進み深さ方向に減衰するエバネッセント波だけが生じます。';
+  else if(st.th<0.5) s='垂直入射では s と p の区別がなく、反射率は ((n₁−n₂)/(n₁+n₂))² = '+fmtPct(F.Rs)+' です。';
+  else if(Math.abs(st.th-tB)<0.8) s='Brewster 角付近です。p 偏光の反射率がほぼ 0 になり、反射光は s 偏光だけになります（反射光と屈折光がほぼ直交）。';
+  else if(tC!==null && tC-st.th<3) s='臨界角に近づくと屈折光は界面すれすれに進み、反射率が急に 1 に近づきます。';
+  else s='s 偏光の方が p 偏光より反射しやすく、入射角が 90° に近づくと両方とも反射率が 1 に近づきます。';
+  $('summary').textContent=s;
+  $('thO').textContent=st.th.toFixed(1)+'°';$('n1O').textContent=st.n1.toFixed(2);$('n2O').textContent=st.n2.toFixed(2);$('spO').textContent=st.speed.toFixed(2);
+  $('goC').disabled=tC===null; $('goB').disabled=Math.abs(st.n1-st.n2)<1e-3;
+  $('lgU').style.display=st.pol==='u'?'':'none'; $('lgT').style.display=st.showT?'':'none';
+  const wave=st.view==='wave';
+  $('cvTitle').firstChild.nodeValue=wave?'波面':'光線図';
+  $('cvSub').innerHTML=wave?'界面上で入射波と屈折波の山の位置・間隔がそろう（k<sub>x</sub> が等しい）':'線の太さが光の強さ（エネルギーの割合）を表します';
+  $('play').style.display=wave?'':'none'; $('spRow').classList.toggle('off',!wave);
+}
+
+function draw(){ (st.view==='wave'?drawWaves:drawRays)(); drawGraph(); }
+function refresh(){updateText();draw();}
+
+/* ---- 操作 ---- */
+$('th').addEventListener('input',e=>{st.th=+e.target.value;refresh();});
+$('n1').addEventListener('input',e=>{st.n1=+e.target.value;refresh();});
+$('n2').addEventListener('input',e=>{st.n2=+e.target.value;refresh();});
+$('sp').addEventListener('input',e=>{st.speed=+e.target.value;refresh();});
+function setTh(v){st.th=Math.max(0,Math.min(89.9,v));$('th').value=st.th;refresh();}
+document.querySelectorAll('[data-pol]').forEach(b=>b.addEventListener('click',()=>{st.pol=b.dataset.pol;
+  document.querySelectorAll('[data-pol]').forEach(x=>x.setAttribute('aria-pressed',x===b));refresh();}));
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{st.view=b.dataset.view;
+  document.querySelectorAll('[data-view]').forEach(x=>x.setAttribute('aria-pressed',x===b));refresh();}));
+document.querySelectorAll('[data-n]').forEach(b=>b.addEventListener('click',()=>{const [a,c]=b.dataset.n.split(',').map(Number);
+  st.n1=a;st.n2=c;$('n1').value=a;$('n2').value=c;refresh();}));
+$('goN').addEventListener('click',()=>setTh(0));
+$('goB').addEventListener('click',()=>setTh(Math.round(brewster()*10)/10));
+$('goC').addEventListener('click',()=>{const c=critical();if(c!==null)setTh(Math.min(89.9,Math.ceil(c*10)/10+0.5));});
+$('tBtn').addEventListener('click',e=>{st.showT=!st.showT;e.currentTarget.setAttribute('aria-pressed',st.showT);refresh();});
+$('play').addEventListener('click',()=>{st.playing=!st.playing;$('play').textContent=st.playing?'一時停止':'再生';});
+$('reset').addEventListener('click',()=>{Object.assign(st,{th:40,n1:1,n2:1.5,pol:'s',view:'ray',showT:false,playing:true,t:0,speed:0.8});
+  $('th').value=40;$('n1').value=1;$('n2').value=1.5;$('sp').value=0.8;$('play').textContent='一時停止';
+  document.querySelectorAll('[data-pol]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.pol==='s'));
+  document.querySelectorAll('[data-view]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.view==='ray'));
+  $('tBtn').setAttribute('aria-pressed','false');refresh();});
+// グラフで角度を選ぶ
+const gr=$('gr');let dragging=false;
+function grPick(e){const r=gr.getBoundingClientRect();const x=e.clientX-r.left;setTh(90*(x-GP.l)/(r.width-GP.l-GP.r));}
+gr.addEventListener('pointerdown',e=>{dragging=true;gr.setPointerCapture(e.pointerId);grPick(e);});
+gr.addEventListener('pointermove',e=>{if(dragging)grPick(e);});
+gr.addEventListener('pointerup',()=>dragging=false);gr.addEventListener('pointercancel',()=>dragging=false);
+
+/* ---- アニメーション ---- */
+let last=performance.now();
+function loop(now){const dt=Math.min(0.05,(now-last)/1000);last=now;
+  if(st.view==='wave'&&st.playing){st.t+=dt*st.speed*2*Math.PI*0.8;drawWaves();}
+  requestAnimationFrame(loop);}
+window.addEventListener('resize',draw);
+const mq=window.matchMedia('(prefers-color-scheme: dark)');(mq.addEventListener?mq.addEventListener('change',()=>{readColors();draw();}):0);
+readColors();refresh();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
